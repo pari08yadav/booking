@@ -1,8 +1,10 @@
 from rest_framework import serializers
-from .models import User, PasswordResetToken
+from .models import User, PasswordResetToken, Transaction
 from django.contrib.auth.hashers import make_password
 from django.core.mail import send_mail
 import secrets
+from rest_framework_simplejwt.tokens import RefreshToken
+
 
 class UserSignupSerializer(serializers.ModelSerializer):
     confirm_password = serializers.CharField(write_only=True, required=True)
@@ -46,11 +48,11 @@ class UserLoginSerializer(serializers.Serializer):
         password = data.get('password')
         
         # Try to find the user by email
-        user = User.objects.get(email = identifier)
+        user = User.objects.filter(email=identifier).first()
         if not user:
             # If not found by email, try phone number
             user = User.objects.filter(phone_number=identifier).first()
-            
+        
         if not user:
             raise serializers.ValidationError("Invalid email/phone number or password.")
         
@@ -61,6 +63,14 @@ class UserLoginSerializer(serializers.Serializer):
         # Add the user object to the validated data
         data['user'] = user
         return data
+    
+    def create_jwt_token(self, user):
+        # Create the refresh and access tokens
+        refresh = RefreshToken.for_user(user)
+        return {
+            'refresh': str(refresh),
+            'access': str(refresh.access_token)
+        }
     
     
 class ForgotPasswordSerializer(serializers.Serializer):
@@ -147,3 +157,10 @@ class ForgotPasswordConfirmSerializer(serializers.Serializer):
         token_obj.delete()
         
         return user
+    
+    
+class TransactionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Transaction
+        fields = ['transaction_id', 'user', 'admin', 'amount', 'type', 'product_id', 'timestamp']
+        read_only_fields = ['transaction_id', 'timestamp']
