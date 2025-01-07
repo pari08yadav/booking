@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import User, PasswordResetToken, Transaction
+from .models import User, PasswordResetToken, Transaction, Train, Ticket
 from django.contrib.auth.hashers import make_password
 from django.core.mail import send_mail
 import secrets
@@ -164,3 +164,19 @@ class TransactionSerializer(serializers.ModelSerializer):
         model = Transaction
         fields = ['transaction_id', 'user', 'admin', 'amount', 'type', 'product_id', 'timestamp']
         read_only_fields = ['transaction_id', 'timestamp']
+    
+    
+# Train serializer
+class TrainSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Train
+        fields = ['id', 'name', 'train_number', 'source', 'destination', 'departure_time', 'arrival_time', 'price']
+
+
+# Ticket serializer
+class TicketSerializer(serializers.ModelSerializer):
+    train = TrainSerializer()
+
+    class Meta:
+        model = Ticket
+        fields = ['id', 'train', 'date', 'is_booked']

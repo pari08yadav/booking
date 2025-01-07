@@ -9,4 +9,5 @@ urlpatterns = [
     path('api/forgot/paasword/request/', forgot_password_request, name="forgot_password_request" ),
     path('api/password/forgot/confirm/', views.forgot_password_confirm, name="forgot_password_confrim"),
     path('api/transaction/', views.create_transaction, name="create_transaction"),
+    path('api/search/tickets/', views.search_tickets, name="search_tickets")
 ]

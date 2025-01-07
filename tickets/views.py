@@ -2,10 +2,10 @@ from django.shortcuts import render
 from rest_framework.response import Response
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework import status
-from .models import User, UserBalance, Transaction
-from .serializers import UserSignupSerializer, UserLoginSerializer, ForgotPasswordSerializer, ForgotPasswordConfirmSerializer, TransactionSerializer
-import secrets
+from .models import User, UserBalance, Transaction, Ticket
+from .serializers import UserSignupSerializer, UserLoginSerializer, ForgotPasswordSerializer, ForgotPasswordConfirmSerializer, TransactionSerializer, TicketSerializer, TrainSerializer
 from rest_framework.permissions import IsAuthenticated
+from django.utils.dateparse import parse_date
 
 
 
@@ -117,3 +117,55 @@ def create_transaction(request):
 
     serializer = TransactionSerializer(transaction)
     return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def search_tickets(request):
+    source = request.GET.get('source')
+    destination = request.GET.get('destination')
+    date = request.GET.get('date')
+
+    if not (source and destination):
+        return Response(
+            {"error": "Source and destination are required."},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    try:
+        if date:
+            date_obj = parse_date(date)
+            if not date_obj:
+                raise ValueError
+        else:
+            date_obj = None
+    except ValueError:
+        return Response(
+            {"error": "Invalid date format. Use YYYY-MM-DD."},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # Filter tickets
+    if date_obj:
+        tickets = Ticket.objects.filter(
+            train__source__iexact=source,
+            train__destination__iexact=destination,
+            date=date_obj,
+            is_booked=False
+        )
+    else:
+        tickets = Ticket.objects.filter(
+            train__source__iexact=source,
+            train__destination__iexact=destination,
+            is_booked=False
+        )
+        
+    if not tickets.exists():
+        return Response(
+            {"message": "No tickets available for the given criteria."},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    serializer = TicketSerializer(tickets, many=True)
+    return Response(serializer.data, status=status.HTTP_200_OK)

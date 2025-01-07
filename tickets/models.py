@@ -58,3 +58,31 @@ class Transaction(models.Model):
 
     def __str__(self):
         return f"Transaction {self.transaction_id} ({self.type}): {self.amount}"
+
+
+# Train detail model
+from django.db import models
+
+class Train(models.Model):
+    name = models.CharField(max_length=100)
+    train_number = models.CharField(max_length=10, unique=True)
+    source = models.CharField(max_length=100)
+    destination = models.CharField(max_length=100)
+    departure_time = models.TimeField()
+    arrival_time = models.TimeField()
+    price = models.DecimalField(max_digits=10, decimal_places=2)
+
+    def __str__(self):
+        return f"{self.name} ({self.train_number})"
+
+
+# Ticket model
+class Ticket(models.Model):
+    train = models.ForeignKey(Train, on_delete=models.CASCADE, related_name="tickets")
+    date = models.DateField()
+    is_booked = models.BooleanField(default=False)
+
+    def __str__(self):
+        return f"Ticket for {self.train.name} on {self.date}"
+
+
