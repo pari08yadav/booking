@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import User, PasswordResetToken, Transaction, Train, Ticket
+from .models import User, PasswordResetToken, Transaction, Train, Ticket, Booking, TrainSchedule
 from django.contrib.auth.hashers import make_password
 from django.core.mail import send_mail
 import secrets
@@ -173,10 +173,32 @@ class TrainSerializer(serializers.ModelSerializer):
         fields = ['id', 'name', 'train_number', 'source', 'destination', 'departure_time', 'arrival_time', 'price']
 
 
+
+# Train schedule serializer
+class TrainScheduleSerializer(serializers.ModelSerializer):
+    train_name = serializers.CharField(source='train.name', read_only=True)  # Assuming Train model has a 'name' field
+
+    class Meta:
+        model = TrainSchedule
+        fields = ['id', 'train_name', 'date', 'available_seats']
+
+
 # Ticket serializer
 class TicketSerializer(serializers.ModelSerializer):
-    train = TrainSerializer()
+    train_schedule = TrainScheduleSerializer(read_only=True)  # Nested schedule details
+    train_schedule_date = serializers.CharField(source='train_schedule.date', read_only=True)  # Accessing date from train_schedule
+    class_type = serializers.ChoiceField(choices=Ticket.CLASS_CHOICES)
 
     class Meta:
         model = Ticket
-        fields = ['id', 'train', 'date', 'is_booked']
+        fields = ['id', 'seat_number', 'is_booked', 'train_schedule', 'train_schedule_date', 'class_type']  # Include the train_schedule_date
+
+
+# Booking serializer
+class BookingSerializer(serializers.ModelSerializer):
+    ticket = TicketSerializer(read_only=True)  # Nested ticket details
+    user = serializers.StringRelatedField(read_only=True)  # Assuming User model has a `__str__` method
+
+    class Meta:
+        model = Booking
+        fields = ['id', 'user', 'ticket', 'payment_status', 'created_at', 'updated_at']

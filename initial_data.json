@@ -1,0 +1,47 @@
+[
+    {
+      "model": "tickets.train",
+      "pk": 1,
+      "fields": {
+        "name": "Superfast Express",
+        "train_number": "12345",
+        "source": "New Delhi",
+        "destination": "Mumbai",
+        "departure_time": "08:00:00",
+        "arrival_time": "20:00:00",
+        "price": "1500.00"
+      }
+    },
+    {
+      "model": "tickets.train",
+      "pk": 2,
+      "fields": {
+        "name": "Shatabdi Express",
+        "train_number": "12001",
+        "source": "Bangalore",
+        "destination": "Chennai",
+        "departure_time": "06:00:00",
+        "arrival_time": "10:00:00",
+        "price": "800.00"
+      }
+    },
+    {
+      "model": "tickets.train_schedule",
+      "pk": 1,
+      "fields": {
+        "train": 1,
+        "date": "2025-01-10",
+        "available_seats": 100
+      }
+    },
+    {
+      "model": "tickets.train",
+      "pk": 1,
+      "fields": {
+        "train_schedule": 1,
+        "seat_number": "S1",
+        "is_booked": false
+      }
+    }
+  ]
+  

@@ -1,9 +1,11 @@
+from django.db import connection
+from django.forms import DateField, ValidationError
 from django.shortcuts import render
 from rest_framework.response import Response
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework import status
-from .models import User, UserBalance, Transaction, Ticket
-from .serializers import UserSignupSerializer, UserLoginSerializer, ForgotPasswordSerializer, ForgotPasswordConfirmSerializer, TransactionSerializer, TicketSerializer, TrainSerializer
+from .models import Train, User, UserBalance, Transaction, Ticket, Booking
+from .serializers import UserSignupSerializer, UserLoginSerializer, ForgotPasswordSerializer, ForgotPasswordConfirmSerializer, TransactionSerializer, TicketSerializer,  BookingSerializer, TrainSchedule
 from rest_framework.permissions import IsAuthenticated
 from django.utils.dateparse import parse_date
 
@@ -119,53 +121,188 @@ def create_transaction(request):
     return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
-
+# Search Tickets API
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def search_tickets(request):
     source = request.GET.get('source')
     destination = request.GET.get('destination')
     date = request.GET.get('date')
-
-    if not (source and destination):
+    
+    if not source or not destination:
         return Response(
-            {"error": "Source and destination are required."},
+            {"error": "Both source and destination are required."},
             status=status.HTTP_400_BAD_REQUEST
         )
 
     try:
-        if date:
-            date_obj = parse_date(date)
-            if not date_obj:
-                raise ValueError
-        else:
-            date_obj = None
+        date_obj = parse_date(date) if date else None
+        if date and not date_obj:
+            raise ValueError("Invalid date format")
     except ValueError:
         return Response(
             {"error": "Invalid date format. Use YYYY-MM-DD."},
             status=status.HTTP_400_BAD_REQUEST
         )
-
-    # Filter tickets
-    if date_obj:
-        tickets = Ticket.objects.filter(
-            train__source__iexact=source,
-            train__destination__iexact=destination,
-            date=date_obj,
-            is_booked=False
-        )
-    else:
-        tickets = Ticket.objects.filter(
-            train__source__iexact=source,
-            train__destination__iexact=destination,
-            is_booked=False
-        )
-        
-    if not tickets.exists():
+    
+    # Filter trains by source and destination
+    trains = Train.objects.filter(source__iexact=source, destination__iexact=destination)
+    
+    if not trains.exists():
         return Response(
-            {"message": "No tickets available for the given criteria."},
-            status=status.HTTP_404_NOT_FOUND
+            {"message": "No trains found for the given source and destination."},
+            status=status.HTTP_200_OK
         )
 
-    serializer = TicketSerializer(tickets, many=True)
+    schedules = TrainSchedule.objects.filter(train__in=trains)
+    
+    if date_obj:
+        schedules = schedules.filter(date=date_obj)
+
+    if not schedules.exists():
+        return Response(
+            {"message": "No schedules available for the given criteria."},
+            status=status.HTTP_200_OK
+        )
+    
+    # Custom response format
+    response_data = []
+    for schedule in schedules:
+        train = schedule.train
+        response_data.append({
+            "train_name": train.name,
+            "date": schedule.date,
+            "available_seats": schedule.available_seats,
+            "train_schedule_id": schedule.id,  # Include the train schedule ID
+            "source": train.source,
+            "destination": train.destination,
+        })
+
+    return Response(response_data, status=status.HTTP_200_OK)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def book_ticket(request):
+    passengers = request.data.get('passengers', [])  # List of passenger details
+    train_schedule_id = request.data.get('train_schedule_id')  # Train schedule ID
+    payment_status = request.data.get('payment_status', 'Pending')
+
+    # Validate input
+    if not passengers or not isinstance(passengers, list):
+        return Response({"error": "Passenger details are required and must be a list."}, status=status.HTTP_400_BAD_REQUEST)
+
+    if not train_schedule_id:
+        return Response({"error": "Train schedule ID is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+    valid_payment_statuses = ['Pending', 'Completed', 'Failed']
+    if payment_status not in valid_payment_statuses:
+        return Response({"error": "Invalid payment status."}, status=status.HTTP_400_BAD_REQUEST)
+
+    # Fetch the train schedule
+    try:
+        train_schedule = TrainSchedule.objects.get(id=train_schedule_id)
+    except TrainSchedule.DoesNotExist:
+        return Response({"error": "Train schedule not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    if train_schedule.available_seats < len(passengers):
+        return Response({"error": "Not enough seats available."}, status=status.HTTP_400_BAD_REQUEST)
+
+    bookings = []  # To store booking details for response
+    cursor = connection.cursor()
+    
+    try:
+        # Begin a manual database transaction
+        cursor.execute("BEGIN")
+        
+        for passenger in passengers:
+            # Validate passenger details
+            passenger_name = passenger.get('name')
+            passenger_age = passenger.get('age')
+            class_type = passenger.get('classType')
+
+            if not passenger_name or not passenger_age or not class_type:
+                return Response({"error": "Valid passenger name, age, and class type are required."}, status=status.HTTP_400_BAD_REQUEST)
+
+            # Generate a unique seat number (e.g., based on available seats)
+            seat_number = f"SN-{train_schedule.id}-{train_schedule.available_seats}"
+
+            # Create and book the ticket
+            ticket = Ticket.objects.create(
+                train_schedule=train_schedule,
+                seat_number=seat_number,
+                is_booked=True,
+                class_type=class_type
+            )
+
+            # Reduce available seats in the train schedule
+            train_schedule.available_seats -= 1
+            train_schedule.save()
+
+            # Create booking
+            booking = Booking.objects.create(
+                user=request.user,
+                ticket=ticket,
+                passenger_name=passenger_name,
+                passenger_age=passenger_age,
+                payment_status=payment_status
+            )
+            bookings.append({
+                "booking_id": booking.id,
+                "ticket_id": ticket.id,
+                "seat_number": ticket.seat_number,
+                "passenger_name": passenger_name,
+                "class_type": class_type
+            })
+
+        # Commit the transaction
+        cursor.execute("COMMIT")
+        return Response(
+            {"message": "Tickets booked successfully!", "bookings": bookings},
+            status=status.HTTP_201_CREATED
+        )
+    except Exception as e:
+        # Log the error for debugging
+        print(f"Error: {e}")
+        return Response({"error": "An unexpected error occurred."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+
+# View Bookings API
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def view_bookings(request):
+    bookings = Booking.objects.filter(user=request.user).select_related('ticket__train_schedule')
+    serializer = BookingSerializer(bookings, many=True)
     return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+# Cancel Booking API
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def cancel_booking(request):
+    booking_id = request.data.get('booking_id')
+
+    if not booking_id:
+        return Response({"error": "Booking ID is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        booking = Booking.objects.select_related('ticket__train_schedule').get(id=booking_id, user=request.user)
+        ticket = booking.ticket
+        train_schedule = ticket.train_schedule
+
+        # Mark ticket as not booked
+        ticket.is_booked = False
+        ticket.save()
+
+        # Increment available seats in the train schedule
+        if train_schedule:
+            train_schedule.available_seats += 1
+            train_schedule.save()
+
+        # Delete the booking
+        booking.delete()
+
+        return Response({"message": "Booking canceled successfully."}, status=status.HTTP_200_OK)
+    except Booking.DoesNotExist:
+        return Response({"error": "Booking not found."}, status=status.HTTP_404_NOT_FOUND)
