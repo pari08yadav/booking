@@ -1,3 +1,4 @@
+from decimal import Decimal
 from django.db import connection
 from django.forms import DateField, ValidationError
 from django.shortcuts import render
@@ -5,8 +6,8 @@ from rest_framework.response import Response
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework import status
 from .models import Train, User, UserBalance, Transaction, Ticket, Booking
-from .serializers import UserSignupSerializer, UserLoginSerializer, ForgotPasswordSerializer, ForgotPasswordConfirmSerializer, TransactionSerializer, TicketSerializer,  BookingSerializer, TrainSchedule
-from rest_framework.permissions import IsAuthenticated
+from .serializers import UserBalanceSerializer, UserSignupSerializer, UserLoginSerializer, ForgotPasswordSerializer, ForgotPasswordConfirmSerializer, TransactionSerializer, TicketSerializer,  BookingSerializer, TrainSchedule
+from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from django.utils.dateparse import parse_date
 
 
@@ -306,3 +307,49 @@ def cancel_booking(request):
         return Response({"message": "Booking canceled successfully."}, status=status.HTTP_200_OK)
     except Booking.DoesNotExist:
         return Response({"error": "Booking not found."}, status=status.HTTP_404_NOT_FOUND)
+
+
+# Add fund in waller view
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def add_fund(request):
+    user = request.user
+    amount = request.data.get('amount')
+    
+    # Validate the amount
+    if not amount:
+        return Response({"error": "Amount is required"}, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        amount = Decimal(amount)  # Convert to Decimal
+        if amount <= 0:
+            return Response({"error": "Amount must be greater than zero"}, status=status.HTTP_400_BAD_REQUEST)
+    except:
+        return Response({"error": "Invalid amount format"}, status=status.HTTP_400_BAD_REQUEST)
+    
+    user_balance, created = UserBalance.objects.get_or_create(user=user)
+    user_balance.balance += amount
+    user_balance.save()
+    
+    # Serialize the updated balance
+    serializer = UserBalanceSerializer(user_balance)
+    return Response({"message": "Amount added successfully", "data":serializer.data}, status=200)
+
+
+
+# Check balance api view
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def check_balance(request):
+    user_balance, created = UserBalance.objects.get_or_create(user=request.user)
+    serializer = UserBalanceSerializer(user_balance)
+    return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+# Admin view balances all user
+# @api_view(['GET'])
+# @permission_classes([IsAdminUser])
+# def admin_view_balances(request):
+#     balances = UserBalance.objects.all()
+#     serializer = UserBalanceSerializer(balances, many=True)
+#     return Response(serializer.data, status=status.HTTP_200_OK)

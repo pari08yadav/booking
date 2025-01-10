@@ -13,4 +13,6 @@ urlpatterns = [
     path('api/book/ticket/', views.book_ticket, name="book_ticket"),
     path('api/view/booking/', views.view_bookings, name="view_booking"),
     path('api/cancel/booking/', views.cancel_booking, name="cancel_booking"),
+    path('api/add/fund/', views.add_fund, name="add_fund"),
+    path('api/check/balance/', views.check_balance, name="check_balance"),
 ]

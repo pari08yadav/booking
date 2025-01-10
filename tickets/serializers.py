@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import User, PasswordResetToken, Transaction, Train, Ticket, Booking, TrainSchedule
+from .models import User, PasswordResetToken, Transaction, Train, Ticket, Booking, TrainSchedule, UserBalance
 from django.contrib.auth.hashers import make_password
 from django.core.mail import send_mail
 import secrets
@@ -202,3 +202,14 @@ class BookingSerializer(serializers.ModelSerializer):
     class Meta:
         model = Booking
         fields = ['id', 'user', 'ticket', 'payment_status', 'created_at', 'updated_at']
+
+
+# Wallet Serialiazer
+class UserBalanceSerializer(serializers.ModelSerializer):
+    user = serializers.CharField(source='user.username', read_only=True)  # Show username instead of user ID
+
+    class Meta:
+        model = UserBalance
+        fields = ['user', 'balance', 'updated_at']
+        read_only_fields = ['user', 'updated_at']
+        
