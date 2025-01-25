@@ -2,6 +2,7 @@ from django.db import models
 from django.contrib.auth.models import AbstractUser 
 from datetime import timedelta
 from django.utils import timezone
+from django.utils.timezone import now
 import uuid
 
 
@@ -40,24 +41,14 @@ class UserBalance(models.Model):
 
 # transaction table for storing transction values 
 class Transaction(models.Model):
-    CREDIT = 'credit'
-    DEBIT = 'debit'
-    
-    TRANSACTION_TYPES = [
-        ('CREDIT', 'Credit'),
-        ('DEBIT', 'Debit'),
-    ]
-
-    transaction_id = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="transactions")
-    admin = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="admin_transactions")
-    amount = models.DecimalField(max_digits=10, decimal_places=2)
-    type = models.CharField(max_length=6, choices=TRANSACTION_TYPES)
-    product_id = models.CharField(max_length=255, null=True, blank=True)  # Optional for specific products
-    timestamp = models.DateTimeField(auto_now_add=True)
+    ticket = models.ForeignKey('Ticket', on_delete=models.CASCADE, related_name='transactions', default='')
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='transactions')
+    total_amount = models.DecimalField(max_digits=10, decimal_places=2)
+    timestamp = models.DateTimeField(default=now)
+    status = models.CharField(max_length=20, choices=[('Success', 'Success'), ('Failed', 'Failed')], default='Success')
 
     def __str__(self):
-        return f"Transaction {self.transaction_id} ({self.type}): {self.amount}"
+        return f"Transaction {self.id} - {self.user.username}"
 
 
 # Train detail model

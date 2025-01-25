@@ -8,9 +8,18 @@ class UserAdmin(admin.ModelAdmin):
     list_filter = ('is_staff', 'is_active')
 
 
-
 @admin.register(Transaction)
 class TransactionAdmin(admin.ModelAdmin):
-    list_display = ('transaction_id', 'user', 'amount', 'type', 'timestamp')  # Use 'timestamp' instead of 'created_at'
-    search_fields = ('user__username', 'amount')
-    list_filter = ('type', 'timestamp')  # Use 'timestamp' instead of 'created_at'
+    list_display = ('id', 'user', 'ticket', 'total_amount', 'timestamp', 'status')
+    list_filter = ('status', 'timestamp')
+    search_fields = ('transaction_id', 'user__username', 'ticket__seat_number')
+    ordering = ('-timestamp',)
+    readonly_fields = ('id', 'timestamp')
+
+    def has_add_permission(self, request):
+        """Disallow adding transactions manually via the admin interface."""
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        """Disallow deleting transactions via the admin interface."""
+        return False

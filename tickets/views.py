@@ -1,3 +1,4 @@
+from datetime import timezone
 from decimal import Decimal
 from django.db import connection
 from django.forms import DateField, ValidationError
@@ -145,10 +146,9 @@ def search_tickets(request):
             {"error": "Invalid date format. Use YYYY-MM-DD."},
             status=status.HTTP_400_BAD_REQUEST
         )
-    
+        
     # Filter trains by source and destination
-    trains = Train.objects.filter(source__iexact=source, destination__iexact=destination)
-    
+    trains = Train.objects.filter(source__icontains=source, destination__icontains=destination)
     if not trains.exists():
         return Response(
             {"message": "No trains found for the given source and destination."},
@@ -156,7 +156,6 @@ def search_tickets(request):
         )
 
     schedules = TrainSchedule.objects.filter(train__in=trains)
-    
     if date_obj:
         schedules = schedules.filter(date=date_obj)
 
@@ -209,6 +208,16 @@ def book_ticket(request):
     if train_schedule.available_seats < len(passengers):
         return Response({"error": "Not enough seats available."}, status=status.HTTP_400_BAD_REQUEST)
 
+    # Calculate the total fare
+    ticket_price = train_schedule.train.price
+    total_fare = ticket_price * len(passengers) 
+    
+    # Check user balance
+    user_balance = UserBalance.objects.get(user=request.user)
+    if user_balance.balance < total_fare:
+        return Response({"error": "Insufficient balance to book tickets."}, status=status.HTTP_400_BAD_REQUEST)
+
+    
     bookings = []  # To store booking details for response
     cursor = connection.cursor()
     
@@ -248,14 +257,35 @@ def book_ticket(request):
                 passenger_age=passenger_age,
                 payment_status=payment_status
             )
+            # Append booking details to the bookings list
             bookings.append({
                 "booking_id": booking.id,
                 "ticket_id": ticket.id,
                 "seat_number": ticket.seat_number,
-                "passenger_name": passenger_name,
-                "class_type": class_type
+                "passenger_name": passenger_name.capitalize(),
+                "passenger_age": passenger_age,
+                "class_type": class_type,
+                "fare": ticket_price,
+                "train_name": train_schedule.train.name.capitalize(),
+                "train_number": train_schedule.train.train_number,
+                "source": train_schedule.train.source.capitalize(),
+                "destination": train_schedule.train.destination.capitalize(),
+                "date": train_schedule.date,
             })
-
+            
+        # Deduct the fare from the user's balance
+        user_balance.balance -= total_fare
+        user_balance.save()
+        
+        # Create a single transaction entry for the entire booking
+        Transaction.objects.create(
+            user=request.user,
+            ticket = ticket,
+            total_amount=total_fare,
+            # timestamp=timezone.now(),
+            status='Success'
+        )
+        
         # Commit the transaction
         cursor.execute("COMMIT")
         return Response(
